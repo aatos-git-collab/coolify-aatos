@@ -3,6 +3,7 @@
 namespace App\Jobs;
 
 use App\Actions\Docker\GetContainersStatus;
+use App\Services\AiService;
 use App\Enums\ApplicationDeploymentStatus;
 use App\Enums\ProcessStatus;
 use App\Events\ApplicationConfigurationChanged;
@@ -476,6 +477,8 @@ class ApplicationDeploymentJob implements ShouldBeEncrypted, ShouldQueue
             $this->deploy_dockerfile_buildpack();
         } elseif ($this->application->build_pack === 'static') {
             $this->deploy_static_buildpack();
+        } elseif ($this->application->build_pack === 'ai') {
+            $this->deploy_ai_buildpack();
         } else {
             $this->deploy_nixpacks_buildpack();
         }
@@ -951,6 +954,159 @@ class ApplicationDeploymentJob implements ShouldBeEncrypted, ShouldQueue
 
         $this->push_to_docker_registry();
         $this->rolling_update();
+    }
+
+    private function deploy_ai_buildpack()
+    {
+        // AI Build Pack: Analyze source code to detect framework and existing docker files
+        $this->application_deployment_queue->addLogEntry("Starting AI-powered deployment of {$this->customRepository}:{$this->application->git_branch}.");
+
+        if ($this->use_build_server) {
+            $this->server = $this->build_server;
+        }
+
+        $this->prepare_builder_image();
+        $this->check_git_if_build_needed();
+        $this->generate_image_names();
+
+        if (! $this->force_rebuild) {
+            $this->check_image_locally_or_remotely();
+            if ($this->should_skip_build()) {
+                return;
+            }
+        }
+
+        $this->clone_repository();
+        $this->cleanup_git();
+
+        // Get files for AI analysis
+        $filesAnalysis = $this->getFilesForAiAnalysis();
+
+        // Call AI Service to analyze source code
+        $aiResult = $this->analyzeWithAI($filesAnalysis);
+
+        $this->application_deployment_queue->addLogEntry("AI detected framework: {$aiResult['framework']}");
+
+        if ($aiResult['framework'] === 'existing_docker') {
+            // Use existing Dockerfile or docker-compose from repo
+            $this->application_deployment_queue->addLogEntry("AI: Using existing Docker configuration from repository.");
+
+            if ($aiResult['has_compose']) {
+                // Existing docker-compose found - write it to workdir then use compose flow
+                $composeContent = $aiResult['existing_compose'] ?? '';
+                if (!empty($composeContent)) {
+                    $composePath = "{$this->workdir}/docker-compose.yml";
+                    $this->execute_remote_command([
+                        "echo '" . addslashes($composeContent) . "' > {$composePath}"
+                    ]);
+                    $this->application_deployment_queue->addLogEntry("AI: Written existing docker-compose to {$composePath}");
+                }
+                $this->deploy_docker_compose_buildpack();
+            } else {
+                // Existing Dockerfile found - write it to workdir then use dockerfile flow
+                $dockerfileContent = $aiResult['existing_dockerfile'] ?? '';
+                if (!empty($dockerfileContent)) {
+                    $dfPath = "{$this->workdir}/Dockerfile";
+                    // Write Dockerfile content to workdir
+                    $this->execute_remote_command([
+                        "cat > {$dfPath} << 'DFEOF'\n{$dockerfileContent}\nDFEOF"
+                    ]);
+                    $this->application_deployment_queue->addLogEntry("AI: Written existing Dockerfile to {$dfPath} (" . strlen($dockerfileContent) . " bytes)");
+                }
+                $this->deploy_dockerfile_buildpack();
+            }
+        } else {
+            // No existing docker files - generate using nixpacks with AI-detected framework
+            $this->application_deployment_queue->addLogEntry("AI: No existing Docker files found. Using AI-detected framework: {$aiResult['framework']}");
+
+            // Fall through to nixpacks - set build_pack to nixpacks and call nixpacks deploy
+            // But first, we could enhance with AI-detected info
+            $this->generate_nixpacks_confs();
+            $this->generate_compose_file();
+
+            // Save build-time .env file BEFORE the build
+            $this->save_buildtime_environment_variables();
+            $this->generate_build_env_variables();
+            $this->build_image();
+
+            // Save runtime environment variables AFTER the build
+            $this->save_runtime_environment_variables();
+            $this->push_to_docker_registry();
+            $this->rolling_update();
+        }
+    }
+
+    private function getFilesForAiAnalysis(): array
+    {
+        // Get list of files in the cloned repository inside builder container
+        $fileListCmd = "find {$this->workdir} -type f -not -path '*/.git/*' -not -path '*/node_modules/*' -not -path '*/vendor/*' -not -path '*/.venv/*' -not -path '*/dist/*' -not -path '*/build/*' 2>/dev/null | head -100";
+
+        $fileListResult = $this->execute_remote_command([executeInDocker($this->deployment_uuid, $fileListCmd)]);
+        $fileList = trim($fileListResult[0] ?? '');
+
+        $this->application_deployment_queue->addLogEntry("DEBUG: File list from container (first 500 chars): " . substr($fileList, 0, 500));
+
+        // Read key files for AI analysis
+        $keyFiles = [
+            'Dockerfile',
+            'docker-compose.yml',
+            'docker-compose.yaml',
+            'Dockerfile.dev',
+            'Dockerfile.prod',
+            'package.json',
+            'requirements.txt',
+            'composer.json',
+            'go.mod',
+            'Cargo.toml',
+            'pom.xml',
+            'build.gradle',
+            'Makefile',
+        ];
+
+        $contents = [];
+        foreach ($keyFiles as $file) {
+            $fullPath = "{$this->workdir}/{$file}";
+            $readCmd = "cat {$fullPath} 2>/dev/null | head -500 || echo 'FILE_NOT_FOUND'";
+            $result = $this->execute_remote_command([executeInDocker($this->deployment_uuid, $readCmd)]);
+            $fileContent = trim($result[0] ?? '');
+            if ($fileContent !== 'FILE_NOT_FOUND' && !empty($fileContent)) {
+                $contents[$file] = $fileContent;
+                $this->application_deployment_queue->addLogEntry("DEBUG: Read {$file}: found (" . strlen($contents[$file]) . " bytes)");
+            }
+        }
+
+        $this->application_deployment_queue->addLogEntry("DEBUG: Total files read for AI: " . count($contents));
+        $this->application_deployment_queue->addLogEntry("DEBUG: Contents keys: " . implode(', ', array_keys($contents)));
+
+        return [
+            'file_list' => $fileList,
+            'contents' => $contents,
+        ];
+    }
+
+    private function analyzeWithAI(array $filesAnalysis): array
+    {
+        try {
+            // Log what we're sending to AI
+            $this->application_deployment_queue->addLogEntry("AI: Calling analyzeSourceCode with " . count($filesAnalysis['contents']) . " files");
+
+            $aiService = new AiService();
+            $result = $aiService->analyzeSourceCode($filesAnalysis, $this->deployment_uuid);
+
+            $this->application_deployment_queue->addLogEntry("AI: analyzeSourceCode returned framework: " . ($result['framework'] ?? 'null'));
+
+            return $result;
+        } catch (\Exception $e) {
+            $this->application_deployment_queue->addLogEntry("AI Analysis Error: {$e->getMessage()}. Falling back to nixpacks.");
+            // Fall back to nixpacks detection
+            return [
+                'framework' => 'unknown',
+                'language' => 'unknown',
+                'build_system' => 'nixpacks',
+                'port' => '3000',
+                'dependencies' => [],
+            ];
+        }
     }
 
     private function write_deployment_configurations()
