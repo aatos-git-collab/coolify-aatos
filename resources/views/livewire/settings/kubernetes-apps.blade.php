@@ -214,6 +214,8 @@
                                 <span>Namespace: {{ $app['namespace'] }}</span>
                                 <span>Port: {{ $app['container_port'] }}</span>
                                 <span>Replicas: {{ $app['replicas'] }}</span>
+                                <button type="button" wire:click="scaleApp('{{ $app['id'] }}', 'down')" class="ml-1 px-1 py-0.5 text-xs bg-theme-hover rounded hover:bg-red-500/30">−</button>
+                                <button type="button" wire:click="scaleApp('{{ $app['id'] }}', 'up')" class="px-1 py-0.5 text-xs bg-theme-hover rounded hover:bg-green-500/30">+</button>
                                 @if ($app['autoscale_enabled'])
                                 <span class="text-blue-400">Auto-scale: {{ $app['autoscale_min'] }}-{{ $app['autoscale_max'] }}</span>
                                 @endif

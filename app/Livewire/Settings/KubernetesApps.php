@@ -251,7 +251,35 @@ class KubernetesApps extends Component
             $this->loadData();
 
         } catch (\Exception $e) {
-            $this->statusResult = 'error:' . $e->getMessage();
+            $this->deployResult = 'error:' . $e->getMessage();
+        }
+    }
+
+    public function scaleApp(string $id, string $direction): void
+    {
+        try {
+            $app = KubernetesApp::with('pipeline.cluster')->findOrFail($id);
+            $cluster = $app->pipeline?->cluster ?? KubernetesCluster::where('is_default', true)->first();
+
+            if (!$cluster) {
+                $this->deployResult = 'error:No cluster configured';
+                return;
+            }
+
+            $k8s = new KubernetesService();
+            $k8s->setCluster($cluster);
+
+            $currentReplicas = $app->replicas;
+            $newReplicas = $direction === 'up' ? $currentReplicas + 1 : max(1, $currentReplicas - 1);
+
+            $k8s->scaleDeployment($app->name, $app->namespace, $newReplicas);
+            $app->update(['replicas' => $newReplicas]);
+
+            $this->deployResult = 'success:Scaled to ' . $newReplicas . ' replica(s)';
+            $this->loadData();
+
+        } catch (\Exception $e) {
+            $this->deployResult = 'error:' . $e->getMessage();
         }
     }
 
