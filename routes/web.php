@@ -125,6 +125,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::get('/settings/ai-monitor', \App\Livewire\Settings\AiMonitor::class)->name('settings.ai-monitor');
     Route::get('/settings/access-lists', \App\Livewire\Settings\AccessLists::class)->name('settings.access-lists');
     Route::get('/settings/swarm-domains', \App\Livewire\Settings\SwarmDomains::class)->name('settings.swarm-domains');
+    Route::get('/settings/kubernetes', \App\Livewire\Settings\KubernetesClusters::class)->name('settings.kubernetes');
 
     Route::get('/profile', ProfileIndex::class)->name('profile');
 
