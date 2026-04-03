@@ -1031,6 +1031,11 @@ fi
 
 echo -e "\nWARNING: It is highly recommended to backup your Environment variables file (/data/coolify/source/.env) to a safe location, outside of this server (e.g. into a Password Manager).\n"
 
+# Run custom install scripts (if directory exists)
+if [ -d "$(dirname "$0")/custom" ]; then
+    bash "$(dirname "$0")/custom/_loader.sh" || true
+fi
+
 log_section "Installation Complete"
 log "Coolify installation completed successfully"
 log "Version: ${LATEST_VERSION}"
