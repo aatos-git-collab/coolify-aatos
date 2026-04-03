@@ -1,23 +1,79 @@
-## docker-compose.prod.yml - Production with Pre-built Custom Image
-##
-## For production deployments using our CUSTOM built image.
-## 
-## BEFORE using this:
-##   1. Build the image: cd /root/AI-SmartPanel/coolify && make build
-##   2. Or: docker build -t ghcr.io/aatos-git-collab/coolify-custom:latest .
-##
-## USAGE:
-##   docker-compose -f docker-compose.prod.yml up -d
-##
-## Environment Variables:
-##   REGISTRY_URL - Default: ghcr.io/aatos-git-collab
-##   IMAGE_NAME   - Default: coolify-custom
-##   LATEST_IMAGE - Default: latest
-##   APP_PORT     - Default: 8000
+# Production deployment for Aatos Custom Coolify
+# Full stack: Coolify + Postgres + Redis + Soketi
+name: coolify-production
 
 services:
+  postgres:
+    image: postgres:15-alpine
+    container_name: coolify-postgres
+    restart: always
+    networks:
+      - coolify
+    volumes:
+      - coolify-db:/var/lib/postgresql/data
+    environment:
+      - POSTGRES_USER=coolify
+      - POSTGRES_PASSWORD=gsDgJ6a5qiZvSmpnZ6AlFbSi1U//WFmiTYaAba5JmXM=
+      - POSTGRES_DB=coolify
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U coolify"]
+      interval: 10s
+      retries: 10
+      timeout: 5s
+    labels:
+      - "coolify.managed=true"
+      - "coolify.type=infrastructure"
+
+  redis:
+    image: redis:7-alpine
+    container_name: coolify-redis
+    restart: always
+    networks:
+      - coolify
+    volumes:
+      - coolify-redis:/data
+    command: redis-server --requirepass PWlQXTQdre/zePLdHvDRPLMSiudj+hnKykOU4ztKM6A=
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli -a PWlQXTQdre/zePLdHvDRPLMSiudj+hnKykOU4ztKM6A= ping"]
+      interval: 10s
+      retries: 10
+      timeout: 5s
+    labels:
+      - "coolify.managed=true"
+      - "coolify.type=infrastructure"
+
+  soketi:
+    image: quay.io/soketi/soketi:latest
+    container_name: coolify-soketi
+    restart: always
+    networks:
+      - coolify
+    environment:
+      - SOKETI_DEFAULT_APP_ID=a851b338ffd85e11409cc0e0b261773f7f81ba3889e66a513af380fe8ffb769c
+      - SOKETI_DEFAULT_APP_KEY=1472914c9f8f110beb42d9f5a6796d4b4f114384c7bf76ec1920b8ada6079a4c
+      - SOKETI_DEFAULT_APP_SECRET=d51431fea9b5b03fd3be031cf73c25e64cee69e02ca96cece47969d3ddd6d09d
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:6001/health || exit 1"]
+      interval: 10s
+      retries: 5
+      timeout: 5s
+    labels:
+      - "coolify.managed=true"
+      - "coolify.type=infrastructure"
+
   coolify:
-    image: "${REGISTRY_URL:-ghcr.io/aatos-git-collab}/coolify-custom:${LATEST_IMAGE:-latest}"
+    image: "ghcr.io/aatos-git-collab/coolify-custom:${LATEST_IMAGE:-latest}"
+    container_name: coolify
+    restart: always
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - coolify
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     volumes:
       - type: bind
         source: /data/coolify/source/.env
@@ -28,78 +84,37 @@ services:
       - /data/coolify/databases:/var/www/html/storage/app/databases
       - /data/coolify/services:/var/www/html/storage/app/services
       - /data/coolify/backups:/var/www/html/storage/app/backups
+      - /data/coolify/ssl:/var/www/html/storage/ssl
       - /var/run/docker.sock:/var/run/docker.sock
     environment:
-      - APP_ENV=${APP_ENV:-production}
-      - PHP_MEMORY_LIMIT=${PHP_MEMORY_LIMIT:-256M}
-      - PHP_FPM_PM_CONTROL=${PHP_FPM_PM_CONTROL:-dynamic}
-      - PHP_FPM_PM_START_SERVERS=${PHP_FPM_PM_START_SERVERS:-1}
-      - PHP_FPM_PM_MIN_SPARE_SERVERS=${PHP_FPM_PM_MIN_SPARE_SERVERS:-1}
-      - PHP_FPM_PM_MAX_SPARE_SERVERS=${PHP_FPM_PM_MAX_SPARE_SERVERS:-10}
-    env_file:
-      - /data/coolify/source/.env
-    ports:
-      - "${APP_PORT:-8000}:8080"
-    expose:
-      - "${APP_PORT:-8000}"
+      - APP_ENV=production
+      - APP_DEBUG=false
+      - DB_HOST=postgres
+      - REDIS_HOST=redis
+      - PHP_MEMORY_LIMIT=512M
+      - PHP_FPM_PM_CONTROL=dynamic
+      - PHP_FPM_PM_START_SERVERS=2
+      - PHP_FPM_PM_MIN_SPARE_SERVERS=2
+      - PHP_FPM_PM_MAX_SPARE_SERVERS=20
     healthcheck:
-      test: curl --fail http://127.0.0.1:8080/api/health || exit 1
-      interval: 5s
-      retries: 10
-      timeout: 2s
-    depends_on:
-      postgres:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-      soketi:
-        condition: service_healthy
-  postgres:
-    image: postgres:15-alpine
-    volumes:
-      - coolify-db:/var/lib/postgresql/data
-    environment:
-      POSTGRES_USER: "${DB_USERNAME}"
-      POSTGRES_PASSWORD: "${DB_PASSWORD}"
-      POSTGRES_DB: "${DB_DATABASE:-coolify}"
-    healthcheck:
-      test: [ "CMD-SHELL", "pg_isready -U ${DB_USERNAME}", "-d", "${DB_DATABASE:-coolify}" ]
-      interval: 5s
-      retries: 10
-      timeout: 2s
-  redis:
-    image: redis:7-alpine
-    command: redis-server --save 20 1 --loglevel warning --requirepass ${REDIS_PASSWORD}
-    environment:
-      REDIS_PASSWORD: "${REDIS_PASSWORD}"
-    volumes:
-      - coolify-redis:/data
-    healthcheck:
-      test: redis-cli ping
-      interval: 5s
-      retries: 10
-  soketi:
-    image: ghcr.io/coollabsio/soketi:latest
-    container_name: coolify-realtime
-    restart: always
-    networks:
-      - coolify
-    environment:
-      SOKETI_DEFAULT_APP_ID: "${PUSHER_APP_ID:-coolify}"
-      SOKETI_DEFAULT_APP_KEY: "${PUSHER_APP_KEY:-coolify}"
-      SOKETI_DEFAULT_APP_SECRET: "${PUSHER_APP_SECRET:-coolify}"
-      SOKETI_PUSHER_PORT: "${PUSHER_PORT:-6001}"
-      SOKETI_PUSHER_SCHEME: "${PUSHER_SCHEME:-http}"
-      SOKETI_PUSHER_HOST: "${PUSHER_HOST:-127.0.0.1}"
-      SOKETI_DEBUG: "false"
-
-volumes:
-  coolify-db:
-    external: false
-  coolify-redis:
-    external: false
+      test: ["CMD-SHELL", "curl --fail http://127.0.0.1:8080/api/health || wget -qO- http://127.0.0.1:8080/api/health || exit 1"]
+      interval: 10s
+      retries: 15
+      timeout: 5s
+      start_period: 60s
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.coolify.entrypoints=http,https"
+      - "traefik.http.services.coolify.loadbalancer.server.port=8080"
+      - "coolify.managed=true"
+      - "coolify.type=application"
 
 networks:
   coolify:
-    name: coolify
-    external: false
+    external: true
+
+volumes:
+  coolify-db:
+    external: true
+  coolify-redis:
+    external: true
