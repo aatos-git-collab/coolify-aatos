@@ -1,0 +1,6 @@
+# AATOS GIT PUSH ALLOWLIST
+# Only remotes matching these patterns can be pushed to
+# Format: one pattern per line (grep -q compatible)
+^aatos-git-collab
+^aatos$
+^aatos-cloud
