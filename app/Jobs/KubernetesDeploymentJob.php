@@ -13,6 +13,7 @@ use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Event;
 use Exception;
 
 class KubernetesDeploymentJob implements ShouldQueue
@@ -43,6 +44,13 @@ class KubernetesDeploymentJob implements ShouldQueue
                 throw new Exception("Cannot connect to Kubernetes cluster: {$this->cluster->name}");
             }
 
+            Event::dispatch(new KubernetesAppStatusChanged(
+                (string) $this->app->id,
+                $this->app->name,
+                'deploying',
+                'Starting deployment to cluster: ' . $this->cluster->name
+            ));
+
             // Ensure namespace exists
             $this->ensureNamespace($k8s);
 
@@ -64,11 +72,26 @@ class KubernetesDeploymentJob implements ShouldQueue
             // Update app status
             $this->app->update(['status' => 'deployed']);
 
+            Event::dispatch(new KubernetesAppStatusChanged(
+                (string) $this->app->id,
+                $this->app->name,
+                'deployed',
+                'Deployment completed successfully'
+            ));
+
             Log::info("K8s Deployment: Successfully deployed {$this->app->name}");
 
         } catch (Exception $e) {
             Log::error("K8s Deployment failed: {$e->getMessage()}");
             $this->app->update(['status' => 'failed']);
+
+            Event::dispatch(new KubernetesAppStatusChanged(
+                (string) $this->app->id,
+                $this->app->name,
+                'failed',
+                $e->getMessage()
+            ));
+
             throw $e;
         }
     }
@@ -180,5 +203,12 @@ class KubernetesDeploymentJob implements ShouldQueue
     {
         Log::error("K8s DeploymentJob failed for {$this->app->name}: {$exception->getMessage()}");
         $this->app->update(['status' => 'failed']);
+
+        Event::dispatch(new KubernetesAppStatusChanged(
+            (string) $this->app->id,
+            $this->app->name,
+            'failed',
+            'Job failed: ' . $exception->getMessage()
+        ));
     }
 }
