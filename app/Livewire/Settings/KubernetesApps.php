@@ -168,6 +168,7 @@ class KubernetesApps extends Component
                 'ingress_tls' => $this->ingress_tls,
                 'env_vars' => $envVars,
                 'secrets' => $secrets,
+                'kubernetes_pipeline_id' => $this->pipeline_id,
                 'status' => 'pending',
             ];
 
