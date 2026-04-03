@@ -1,7 +1,7 @@
 #!/bin/bash
 ## Do not modify this file. You will lose the ability to autoupdate!
 
-CDN="https://raw.githubusercontent.com/aatos-git-collab/coolify-custom/master"
+CDN="${CDN:-https://cdn.coollabs.io/coolify}"
 LATEST_IMAGE=${1:-latest}
 LATEST_HELPER_VERSION=${2:-latest}
 REGISTRY_URL=${3:-ghcr.io}

@@ -1,7 +1,5 @@
 #!/bin/bash
-## CUSTOM FORK: aatos-git-collab/coolify-custom
-## CDN is patched to download from our fork instead of coollabsio
-## Fork CDN: https://raw.githubusercontent.com/aatos-git-collab/coolify-custom/master
+## Do not modify this file. You will lose the ability to install and auto-update!
 
 ## Environment variables that can be set:
 ## ROOT_USERNAME - Predefined root username
@@ -17,8 +15,7 @@ set -e # Exit immediately if a command exits with a non-zero status
 ## $1 could be empty, so we need to disable this check
 #set -u # Treat unset variables as an error and exit
 set -o pipefail # Cause a pipeline to return the status of the last command that exited with a non-zero status
-# CUSTOM FORK: Use our fork's raw files instead of coollabs CDN
-CDN="https://raw.githubusercontent.com/aatos-git-collab/coolify-custom/master"
+CDN="${CDN:-https://cdn.coollabs.io/coolify}"
 DATE=$(date +"%Y%m%d-%H%M%S")
 
 OS_TYPE=$(grep -w "ID" /etc/os-release | cut -d "=" -f 2 | tr -d '"')
@@ -39,7 +36,7 @@ echo "=========================================="
 echo ""
 echo "Welcome to Coolify Installer!"
 echo "This script will install everything for you. Sit back and relax."
-echo "Source code: https://github.com/aatos-git-collab/coolify-custom/blob/master/scripts/install.sh"
+echo "Source code: https://github.com/coollabsio/coolify/blob/v4.x/scripts/install.sh"
 
 # Predefined root user
 ROOT_USERNAME=${ROOT_USERNAME:-}

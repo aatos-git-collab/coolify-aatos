@@ -1,26 +1,36 @@
 #!/bin/bash
-## Custom Coolify Fork - Installation Script
+##===============================================================================
+## COOLIFY CUSTOM FORK INSTALLER
 ##
-## This is the entry point for installing OUR custom Coolify fork.
-## It clones from our GitHub fork instead of pulling from coollabsio.
+## Single source of truth for installing our custom Coolify.
+## Everything comes from our fork - no external CDN dependencies.
 ##
-## Usage:
-##   curl -fsSL https://github.com/aatos-git-collab/coolify-custom/raw/master/install.sh | bash
-##   # OR
-##   bash <(curl -fsSL https://github.com/aatos-git-collab/coolify-custom/raw/master/install.sh)
+## USAGE:
+##   bash install.sh                    # Interactive (when cloned)
+##   curl -fsSL <url>/install.sh | bash  # Remote install
 ##
-## For PRIVATE repos, use token authentication:
-##   GH_TOKEN=ghp_xxx curl -fsSL https://github.com/aatos-git-collab/coolify-custom/raw/master/install.sh | bash
+## CONFIGURATION (change these for rebrand):
+##   FORK_REPO  - GitHub repo (e.g., "organization/coolify-custom")
+##   FORK_BRANCH - Branch to install from (default: master)
+##
+## For private repos:
+##   GH_TOKEN=ghp_xxx bash install.sh
+##===============================================================================
 
 set -e
 
-# Our fork configuration
-FORK_REPO="aatos-git-collab/coolify-custom"
-FORK_BRANCH="master"
-FORK_URL="https://github.com/${FORK_REPO}.git"
+#=========================================
+# REBRAND CONFIGURATION - CHANGE HERE
+#=========================================
+FORK_REPO="${FORK_REPO:-aatos-git-collab/coolify-custom}"
+FORK_BRANCH="${FORK_BRANCH:-master}"
+#=========================================
 
-# Get token from env if available (for private repos)
+FORK_URL="https://github.com/${FORK_REPO}.git"
 GH_TOKEN="${GH_TOKEN:-}"
+
+# Determine source directory
+SOURCE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 # Colors
 RED='\033[0;31m'
@@ -47,57 +57,88 @@ if [ $EUID != 0 ]; then
     exit 1
 fi
 
-info "This will install Coolify from CUSTOM FORK:"
-info "  Repository: https://github.com/${FORK_REPO}"
-info "  Branch: ${FORK_BRANCH}"
-info ""
-info "Custom features:"
-info "  - AI Auto-Fix Job"
-info "  - AI Log Monitor Job"
-info "  - AI Service integrations"
+info "Installing from: https://github.com/${FORK_REPO}"
+info "Branch: ${FORK_BRANCH}"
 echo ""
 
-# Build the clone URL (with token if available)
-if [ -n "$GH_TOKEN" ]; then
-    CLONE_URL="https://${GH_TOKEN}@github.com/${FORK_REPO}.git"
-    info "Using authenticated clone (token detected)"
-else
-    CLONE_URL="$FORK_URL"
+#-----------------------------------
+# Clone our fork if not in it
+#-----------------------------------
+if [ ! -d "${SOURCE_DIR}/.git" ] || [ ! -f "${SOURCE_DIR}/docker-compose.yml" ]; then
+    warn "Not in cloned repo - will clone..."
+    
+    if [ -n "$GH_TOKEN" ]; then
+        CLONE_URL="https://${GH_TOKEN}@github.com/${FORK_REPO}.git"
+        info "Using authenticated access"
+    else
+        CLONE_URL="$FORK_URL"
+    fi
+    
+    TEMP_DIR="/tmp/coolify-install-$$"
+    info "Cloning fork..."
+    
+    if git clone --depth 1 --branch "$FORK_BRANCH" "$CLONE_URL" "$TEMP_DIR" 2>&1; then
+        SOURCE_DIR="$TEMP_DIR"
+        success "Clone complete"
+    else
+        error "Failed to clone ${FORK_REPO}"
+        exit 1
+    fi
+    echo ""
 fi
 
-# Clone our fork to temp location
-info "Cloning custom fork..."
-TEMP_DIR="/tmp/coolify-fork-install-$$"
+#-----------------------------------
+# Prepare installation directory
+#-----------------------------------
+info "Preparing installation..."
+mkdir -p /data/coolify/source
 
-if git clone --depth 1 --branch "$FORK_BRANCH" "$CLONE_URL" "$TEMP_DIR" 2>/dev/null; then
-    success "Cloned ${FORK_REPO}"
-else
-    error "Failed to clone ${FORK_REPO}"
-    error "Make sure the repository exists and is accessible"
-    exit 1
-fi
+# Copy ALL files from our fork
+cp "${SOURCE_DIR}/docker-compose.yml" /data/coolify/source/
+cp "${SOURCE_DIR}/docker-compose.prod.yml" /data/coolify/source/
+cp "${SOURCE_DIR}/.env.production" /data/coolify/source/
+cp "${SOURCE_DIR}/versions.json" /data/coolify/source/
 
-# Run the install script from our cloned repo
-info "Running install.sh from custom fork..."
-bash "${TEMP_DIR}/scripts/install.sh" "$@"
-INSTALL_RESULT=$?
+# Copy scripts
+cp "${SOURCE_DIR}/scripts/install.sh" /data/coolify/source/
+cp "${SOURCE_DIR}/scripts/upgrade.sh" /data/coolify/source/
+
+# Copy custom scripts
+mkdir -p /data/coolify/source/scripts/custom
+cp "${SOURCE_DIR}/scripts/custom/"*.sh /data/coolify/source/scripts/custom/ 2>/dev/null || true
+chmod +x /data/coolify/source/scripts/custom/*.sh 2>/dev/null || true
+
+success "Files prepared in /data/coolify/source"
+echo ""
+
+#-----------------------------------
+# Run the install
+#-----------------------------------
+info "Running Coolify installation..."
+info "Log will be saved to /root/coolify-install.log"
+echo ""
+
+# Run install from our prepared source
+# The install script will use /data/coolify/source as its CDN
+CDN="/data/coolify/source" bash /data/coolify/source/scripts/install.sh 2>&1 | tee /root/coolify-install.log
+INSTALL_RESULT=${PIPESTATUS[0]}
 
 # Cleanup
-rm -rf "$TEMP_DIR"
+if [ -n "$TEMP_DIR" ] && [ -d "$TEMP_DIR" ]; then
+    rm -rf "$TEMP_DIR"
+fi
 
+echo ""
+echo "=========================================="
 if [ $INSTALL_RESULT -eq 0 ]; then
-    echo ""
+    success "INSTALLATION COMPLETE!"
     echo "=========================================="
-    success "CUSTOM FORK INSTALLATION COMPLETE!"
-    echo "=========================================="
-    echo ""
-    info "Your custom Coolify fork is now installed!"
-    info "Check the docs: https://github.com/${FORK_REPO}"
+    info "Your custom Coolify is ready!"
+    info "Repo: https://github.com/${FORK_REPO}"
 else
-    echo ""
-    echo "=========================================="
     error "INSTALLATION FAILED"
     echo "=========================================="
+    info "Check log: /root/coolify-install.log"
 fi
 
 exit $INSTALL_RESULT
