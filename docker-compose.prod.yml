@@ -1,6 +1,23 @@
+## docker-compose.prod.yml - Production with Pre-built Custom Image
+##
+## For production deployments using our CUSTOM built image.
+## 
+## BEFORE using this:
+##   1. Build the image: cd /root/AI-SmartPanel/coolify && make build
+##   2. Or: docker build -t ghcr.io/aatos-git-collab/coolify-custom:latest .
+##
+## USAGE:
+##   docker-compose -f docker-compose.prod.yml up -d
+##
+## Environment Variables:
+##   REGISTRY_URL - Default: ghcr.io/aatos-git-collab
+##   IMAGE_NAME   - Default: coolify-custom
+##   LATEST_IMAGE - Default: latest
+##   APP_PORT     - Default: 8000
+
 services:
   coolify:
-    image: "${REGISTRY_URL:-ghcr.io}/coollabsio/coolify:${LATEST_IMAGE:-latest}"
+    image: "${REGISTRY_URL:-ghcr.io/aatos-git-collab}/coolify-custom:${LATEST_IMAGE:-latest}"
     volumes:
       - type: bind
         source: /data/coolify/source/.env
@@ -37,6 +54,7 @@ services:
       soketi:
         condition: service_healthy
   postgres:
+    image: postgres:15-alpine
     volumes:
       - coolify-db:/var/lib/postgresql/data
     environment:
@@ -49,6 +67,7 @@ services:
       retries: 10
       timeout: 2s
   redis:
+    image: redis:7-alpine
     command: redis-server --save 20 1 --loglevel warning --requirepass ${REDIS_PASSWORD}
     environment:
       REDIS_PASSWORD: "${REDIS_PASSWORD}"
@@ -58,33 +77,28 @@ services:
       test: redis-cli ping
       interval: 5s
       retries: 10
-      timeout: 2s
   soketi:
-    image: '${REGISTRY_URL:-ghcr.io}/coollabsio/coolify-realtime:1.0.11'
-    ports:
-      - "${SOKETI_PORT:-6001}:6001"
-      - "6002:6002"
-    volumes:
-      - /data/coolify/ssh:/var/www/html/storage/app/ssh
+    image: ghcr.io/coollabsio/soketi:latest
+    container_name: coolify-realtime
+    restart: always
+    networks:
+      - coolify
     environment:
-      APP_NAME: "${APP_NAME:-Coolify}"
-      SOKETI_DEBUG: "${SOKETI_DEBUG:-false}"
-      SOKETI_DEFAULT_APP_ID: "${PUSHER_APP_ID}"
-      SOKETI_DEFAULT_APP_KEY: "${PUSHER_APP_KEY}"
-      SOKETI_DEFAULT_APP_SECRET: "${PUSHER_APP_SECRET}"
-      SOKETI_HOST: "${SOKETI_HOST:-0.0.0.0}"
-    healthcheck:
-      test: [ "CMD-SHELL", "wget -qO- http://127.0.0.1:6001/ready && wget -qO- http://127.0.0.1:6002/ready || exit 1" ]
-      interval: 5s
-      retries: 10
-      timeout: 2s
+      SOKETI_DEFAULT_APP_ID: "${PUSHER_APP_ID:-coolify}"
+      SOKETI_DEFAULT_APP_KEY: "${PUSHER_APP_KEY:-coolify}"
+      SOKETI_DEFAULT_APP_SECRET: "${PUSHER_APP_SECRET:-coolify}"
+      SOKETI_PUSHER_PORT: "${PUSHER_PORT:-6001}"
+      SOKETI_PUSHER_SCHEME: "${PUSHER_SCHEME:-http}"
+      SOKETI_PUSHER_HOST: "${PUSHER_HOST:-127.0.0.1}"
+      SOKETI_DEBUG: "false"
 
 volumes:
   coolify-db:
-    name: coolify-db
+    external: false
   coolify-redis:
-    name: coolify-redis
+    external: false
 
 networks:
   coolify:
-    external: true
+    name: coolify
+    external: false

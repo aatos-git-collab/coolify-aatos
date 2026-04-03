@@ -1,5 +1,19 @@
+## docker-compose.yml - BUILD from local source
+##
+## Use this when developing or wanting CUSTOM features (AI features).
+## Builds Docker image from local ./docker/production/Dockerfile
+##
+## Usage:
+##   docker-compose up -d --build    # Build and start
+##   docker-compose build && docker-compose up -d  # Build then start
+##
+## This uses LOCAL source code - no external image registry needed!
+
 services:
     coolify:
+        build:
+            context: .
+            dockerfile: docker/production/Dockerfile
         container_name: coolify
         restart: always
         working_dir: /var/www/html
