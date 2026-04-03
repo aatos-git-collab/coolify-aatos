@@ -53,16 +53,16 @@ services:
       - SOKETI_DEFAULT_APP_KEY=1472914c9f8f110beb42d9f5a6796d4b4f114384c7bf76ec1920b8ada6079a4c
       - SOKETI_DEFAULT_APP_SECRET=d51431fea9b5b03fd3be031cf73c25e64cee69e02ca96cece47969d3ddd6d09d
     healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:6001/health || exit 1"]
-      interval: 10s
-      retries: 5
-      timeout: 5s
+      test: ["CMD-SHELL", "node -e \"const net=require('net');const c=net.connect(6001,'127.0.0.1');c.on('error',()=>process.exit(1));c.on('connect',()=>process.exit(0));setTimeout(()=>process.exit(1),2000)\""]
+      interval: 15s
+      retries: 3
+      timeout: 10s
     labels:
       - "coolify.managed=true"
       - "coolify.type=infrastructure"
 
   coolify:
-    image: "ghcr.io/aatos-git-collab/coolify-custom:${LATEST_IMAGE:-latest}"
+    image: "ghcr.io/aatos-git-collab/coolify-custom:v4.0.0-ai-smart-panel-v2"
     container_name: coolify
     restart: always
     depends_on:
