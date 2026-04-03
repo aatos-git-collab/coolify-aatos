@@ -248,6 +248,49 @@ class KubernetesApps extends Component
         }
     }
 
+    public function rollbackApp(string $id): void
+    {
+        try {
+            $app = KubernetesApp::with('pipeline.cluster')->findOrFail($id);
+
+            if (!$app->kubernetes_resource_version) {
+                $this->deployResult = 'error:No previous version to rollback to';
+                return;
+            }
+
+            $cluster = $app->pipeline?->cluster ?? KubernetesCluster::where('is_default', true)->first();
+            if (!$cluster) {
+                $this->deployResult = 'error:No cluster configured';
+                return;
+            }
+
+            $k8s = new KubernetesService();
+            $k8s->setCluster($cluster);
+
+            // Get current deployment to find previous version
+            $current = $k8s->getDeployment($app->name, $app->namespace);
+            $annotations = data_get($current, 'metadata.annotations.deployment.kubernetes.io/revision');
+            $prevRevision = $annotations ? ((int) $annotations - 1) : '1';
+
+            if ($prevRevision < 1) {
+                $this->deployResult = 'error:No previous revision found';
+                return;
+            }
+
+            // Rollback to previous version
+            $result = $k8s->rollbackDeployment($app->name, $app->namespace, (string) $prevRevision);
+
+            if ($result) {
+                $this->deployResult = 'success:Rolling back to revision ' . $prevRevision;
+            } else {
+                $this->deployResult = 'error:Rollback failed';
+            }
+
+        } catch (\Exception $e) {
+            $this->deployResult = 'error:' . $e->getMessage();
+        }
+    }
+
     public function deleteApp(string $id): void
     {
         try {

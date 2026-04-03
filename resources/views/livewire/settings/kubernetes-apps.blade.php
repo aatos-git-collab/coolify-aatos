@@ -228,6 +228,15 @@
                                 <span wire:loading>Deploying...</span>
                             </x-forms.button>
 
+                            @if ($app['status'] === 'deployed')
+                            <x-forms.button type="button" wire:click="rollbackApp('{{ $app['id'] }}')"
+                                class="!px-3 !py-1 text-xs !bg-yellow-500/20 !text-yellow-400 hover:!bg-yellow-500/30"
+                                wire:loading.attr="disabled">
+                                <span wire:loading.remove>Rollback</span>
+                                <span wire:loading>Rolling back...</span>
+                            </x-forms.button>
+                            @endif
+
                             <x-forms.button type="button" wire:click="checkStatus('{{ $app['id'] }}')"
                                 class="!px-3 !py-1 text-xs" wire:loading.attr="disabled">
                                 <span wire:loading.remove>Status</span>

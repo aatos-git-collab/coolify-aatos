@@ -232,6 +232,34 @@ class KubernetesService
         }
     }
 
+    public function rollbackDeployment(string $name, string $namespace, string $revision): bool
+    {
+        try {
+            $rollbackPayload = [
+                'kind' => 'RollbackConfig',
+                'apiVersion' => 'apps/v1',
+                'rollbackTo' => ['revision' => $revision],
+            ];
+
+            $response = Http::withHeaders($this->headers())
+                ->post(
+                    $this->baseUrl() . "/apis/apps/v1/namespaces/{$namespace}/deployments/{$name}/rollback",
+                    $rollbackPayload
+                );
+
+            if ($response->successful()) {
+                Log::info("K8s Rollback: Deployment {$name} rolled back to revision {$revision}");
+                return true;
+            }
+
+            Log::error('K8s rollback failed: ' . $response->body());
+            return false;
+        } catch (Exception $e) {
+            Log::error('K8s rollback error: ' . $e->getMessage());
+            return false;
+        }
+    }
+
     public function scaleDeployment(string $name, string $namespace, int $replicas): array
     {
         $deployment = $this->getDeployment($name, $namespace);
