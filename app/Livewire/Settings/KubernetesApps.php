@@ -48,6 +48,13 @@ class KubernetesApps extends Component
     public int $autoscale_min = 1;
     public int $autoscale_max = 5;
     public int $autoscale_cpu_threshold = 70;
+
+    // Pod Logs
+    public bool $showLogs = false;
+    public string $logContent = '';
+    public string $logAppId = '';
+    public string $logAppName = '';
+    public bool $loadingLogs = false;
     public int $autoscale_memory_threshold = 80;
 
     // Healthcheck
@@ -320,6 +327,60 @@ class KubernetesApps extends Component
         } catch (\Exception $e) {
             $this->dispatch('banner', ['type' => 'error', 'message' => 'Failed to delete: ' . $e->getMessage()]);
         }
+    }
+
+    public function viewLogs(string $id): void
+    {
+        try {
+            $app = KubernetesApp::with('pipeline.cluster')->findOrFail($id);
+            $cluster = $app->pipeline?->cluster;
+
+            if (!$cluster) {
+                $this->logContent = "error:No cluster configured for this app";
+                $this->showLogs = true;
+                return;
+            }
+
+            $this->logAppId = $id;
+            $this->logAppName = $app->name;
+            $this->loadingLogs = true;
+            $this->showLogs = true;
+
+            $k8s = new KubernetesService();
+            $k8s->setCluster($cluster);
+
+            // Get pods for this app
+            $pods = $k8s->listPods($app->namespace, 'app=' . $app->name);
+
+            if (empty($pods)) {
+                $this->logContent = "No pods found for {$app->name}";
+                $this->loadingLogs = false;
+                return;
+            }
+
+            // Get logs from first pod
+            $firstPod = $pods[0];
+            $podName = data_get($firstPod, 'metadata.name', '');
+
+            if ($podName) {
+                $this->logContent = $k8s->getPodLogs($podName, $app->namespace, 200);
+            } else {
+                $this->logContent = "Could not find pod name";
+            }
+
+        } catch (\Exception $e) {
+            $this->logContent = "error:" . $e->getMessage();
+        } finally {
+            $this->loadingLogs = false;
+        }
+    }
+
+    public function closeLogs(): void
+    {
+        $this->showLogs = false;
+        $this->logContent = '';
+        $this->logAppId = '';
+        $this->logAppName = '';
     }
 
     public function cancelForm(): void

@@ -228,7 +228,7 @@
                                 <span wire:loading>Deploying...</span>
                             </x-forms.button>
 
-                            @if ($app['status'] === 'deployed')
+                                    @if ($app['status'] === 'deployed')
                             <x-forms.button type="button" wire:click="rollbackApp('{{ $app['id'] }}')"
                                 class="!px-3 !py-1 text-xs !bg-yellow-500/20 !text-yellow-400 hover:!bg-yellow-500/30"
                                 wire:loading.attr="disabled">
@@ -236,6 +236,13 @@
                                 <span wire:loading>Rolling back...</span>
                             </x-forms.button>
                             @endif
+
+                            <x-forms.button type="button" wire:click="viewLogs('{{ $app['id'] }}')"
+                                class="!px-3 !py-1 text-xs !bg-purple-500/20 !text-purple-400 hover:!bg-purple-500/30"
+                                wire:loading.attr="disabled">
+                                <span wire:loading.remove>Logs</span>
+                                <span wire:loading>Loading...</span>
+                            </x-forms.button>
 
                             <x-forms.button type="button" wire:click="checkStatus('{{ $app['id'] }}')"
                                 class="!px-3 !py-1 text-xs" wire:loading.attr="disabled">
@@ -309,6 +316,35 @@
                     <li>Monitor status and scale automatically if enabled</li>
                 </ol>
             </div>
+
+            {{-- Pod Logs Modal --}}
+            @if ($showLogs)
+            <div class="fixed inset-0 z-50 flex items-center justify-center bg-black/50" wire:click="closeLogs">
+                <div class="bg-theme border border-theme rounded-lg shadow-xl max-w-4xl w-full mx-4 max-h-[80vh] flex flex-col" wire:click.stop>
+                    <div class="flex items-center justify-between p-4 border-b border-theme">
+                        <h3 class="text-lg font-semibold">Pod Logs: {{ $logAppName }}</h3>
+                        <button type="button" wire:click="closeLogs" class="text-helper hover:text-white">
+                            <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+                            </svg>
+                        </button>
+                    </div>
+                    <div class="flex-1 overflow-auto p-4">
+                        @if ($loadingLogs)
+                            <div class="flex items-center justify-center py-8">
+                                <div class="animate-spin w-8 h-8 border-2 border-primary border-t-transparent rounded-full"></div>
+                                <span class="ml-3">Loading logs...</span>
+                            </div>
+                        @else
+                            <pre class="text-xs font-mono bg-black/50 p-4 rounded overflow-auto max-h-[60vh] whitespace-pre-wrap">{{ $logContent }}</pre>
+                        @endif
+                    </div>
+                    <div class="p-4 border-t border-theme flex justify-end">
+                        <x-forms.button type="button" wire:click="closeLogs" class="!px-4">Close</x-forms.button>
+                    </div>
+                </div>
+            </div>
+            @endif
         </div>
     </div>
 </div>
