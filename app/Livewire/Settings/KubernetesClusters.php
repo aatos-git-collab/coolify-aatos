@@ -191,7 +191,15 @@ class KubernetesClusters extends Component
             $k8s->setCluster($cluster);
 
             if ($k8s->testConnection()) {
-                $this->testResult = 'success:Connection successful!';
+                // Fetch and store cluster info
+                $version = $k8s->getClusterVersion();
+                $cluster->update([
+                    'version' => $version['gitVersion'] ?? null,
+                    'distribution' => $this->detectDistribution($cluster->api_server_url),
+                ]);
+                $cluster->refresh();
+                $this->clusters = KubernetesCluster::all()->toArray();
+                $this->testResult = 'success:Connection successful! Cluster v' . ($version['gitVersion'] ?? 'unknown') . ' connected.';
             } else {
                 $this->testResult = 'error:Connection failed. Check credentials.';
             }
