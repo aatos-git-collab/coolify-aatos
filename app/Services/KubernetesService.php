@@ -579,6 +579,19 @@ class KubernetesService
         }
     }
 
+    public function deleteConfigMap(string $name, string $namespace = 'default'): bool
+    {
+        try {
+            $response = Http::withHeaders($this->headers())
+                ->delete($this->baseUrl() . "/api/v1/namespaces/{$namespace}/configmaps/{$name}");
+
+            return $response->successful();
+        } catch (Exception $e) {
+            Log::error('Failed to delete configmap: ' . $e->getMessage());
+            return false;
+        }
+    }
+
     public function createSecret(string $name, array $data, string $namespace = 'default', string $type = 'Opaque'): array
     {
         $manifest = [

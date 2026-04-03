@@ -13,4 +13,11 @@
         href="{{ route('settings.access-lists') }}"><span class="menu-item-label">Access Lists</span></a>
     <a class="sub-menu-item {{ $activeMenu === 'swarm-domains' ? 'menu-item-active' : '' }}" {{ wireNavigate() }}
         href="{{ route('settings.swarm-domains') }}"><span class="menu-item-label">Swarm LB</span></a>
+    <div class="sub-menu-title">Kubernetes</div>
+    <a class="sub-menu-item {{ $activeMenu === 'kubernetes' ? 'menu-item-active' : '' }}" {{ wireNavigate() }}
+        href="{{ route('settings.kubernetes') }}"><span class="menu-item-label">Clusters</span></a>
+    <a class="sub-menu-item {{ $activeMenu === 'kubernetes-apps' ? 'menu-item-active' : '' }}" {{ wireNavigate() }}
+        href="{{ route('settings.kubernetes-apps') }}"><span class="menu-item-label">Apps</span></a>
+    <a class="sub-menu-item {{ $activeMenu === 'kubernetes-addons' ? 'menu-item-active' : '' }}" {{ wireNavigate() }}
+        href="{{ route('settings.kubernetes-addons') }}"><span class="menu-item-label">Addons</span></a>
 </div>
