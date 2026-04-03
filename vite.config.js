@@ -7,6 +7,7 @@ export default defineConfig(({ mode }) => {
 
     return {
         server: {
+            port: parseInt(env.VITE_PORT) || 5174,
             watch: {
                 ignored: [
                     "**/dev_*_data/**",
@@ -15,7 +16,7 @@ export default defineConfig(({ mode }) => {
             },
             host: "0.0.0.0",
             hmr: {
-                host: env.VITE_HOST || '0.0.0.0'
+                host: env.VITE_PUBLIC_HOST || env.VITE_HOST || '0.0.0.0'
             },
         },
         plugins: [

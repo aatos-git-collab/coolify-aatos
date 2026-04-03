@@ -9,15 +9,27 @@ services:
         - USER_ID=${USERID:-1000}
         - GROUP_ID=${GROUPID:-1000}
     ports:
-      - "${APP_PORT:-8000}:8080"
+      - "${DEV_APP_PORT:-8010}:8080"
     environment:
-      AUTORUN_ENABLED: false
-      PUSHER_HOST: "${PUSHER_HOST}"
-      PUSHER_PORT: "${PUSHER_PORT}"
-      PUSHER_SCHEME: "${PUSHER_SCHEME:-http}"
-      PUSHER_APP_ID: "${PUSHER_APP_ID:-coolify}"
-      PUSHER_APP_KEY: "${PUSHER_APP_KEY:-coolify}"
-      PUSHER_APP_SECRET: "${PUSHER_APP_SECRET:-coolify}"
+      AUTORUN_ENABLED: "false"
+      APP_KEY: "base64:qrlhPhvQmjxgob3ngbzoVm7M47hDHbJzTaL33MFgpRQ="
+      APP_URL: "http://${SERVER_IP:-127.0.0.1}:8010"
+      DB_CONNECTION: pgsql
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_DATABASE: coolify
+      DB_USERNAME: coolify
+      DB_PASSWORD: dev_password
+      REDIS_HOST: coolify-dev-redis-1
+      REDIS_PORT: 6379
+      REDIS_PASSWORD: ""
+      PUSHER_HOST: soketi
+      PUSHER_PORT: 6001
+      PUSHER_SCHEME: http
+      PUSHER_APP_ID: coolify
+      PUSHER_APP_KEY: coolify
+      PUSHER_APP_SECRET: coolify
+      ASSET_URL: "http://89.167.96.223:5174"
     healthcheck:
       test: curl -sf http://127.0.0.1:8080/api/health || exit 1
       interval: 5s
@@ -28,48 +40,52 @@ services:
       - dev_backups_data:/var/www/html/storage/app/backups
     networks:
       - coolify
+
   postgres:
+    image: postgres:15-alpine
     pull_policy: always
     ports:
-      - "${FORWARD_DB_PORT:-5432}:5432"
-    env_file:
-      - .env
+      - "${FORWARD_DB_PORT:-5434}:5432"
     environment:
       POSTGRES_USER: "${DB_USERNAME:-coolify}"
-      POSTGRES_PASSWORD: "${DB_PASSWORD:-password}"
+      POSTGRES_PASSWORD: "${DB_PASSWORD:-dev_password}"
       POSTGRES_DB: "${DB_DATABASE:-coolify}"
       POSTGRES_HOST_AUTH_METHOD: "trust"
     healthcheck:
-      test: [ "CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB" ]
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USERNAME:-coolify} -d ${DB_DATABASE:-coolify}"]
       interval: 5s
       retries: 10
       timeout: 2s
     volumes:
       - dev_postgres_data:/var/lib/postgresql/data
+    networks:
+      - coolify
+
   redis:
+    image: redis:7-alpine
     pull_policy: always
     ports:
-      - "${FORWARD_REDIS_PORT:-6379}:6379"
-    env_file:
-      - .env
+      - "${FORWARD_REDIS_PORT:-6380}:6379"
+    command: redis-server --requirepass ""  # No password for dev
     healthcheck:
-      test: redis-cli ping
+      test: ["CMD", "redis-cli", "ping"]
       interval: 5s
       retries: 10
       timeout: 2s
     volumes:
       - dev_redis_data:/data
+    networks:
+      - coolify
+
   soketi:
     image: coolify-realtime:dev
     pull_policy: never
     build:
       context: .
       dockerfile: ./docker/coolify-realtime/Dockerfile
-    env_file:
-      - .env
     ports:
-      - "${FORWARD_SOKETI_PORT:-6001}:6001"
-      - "6002:6002"
+      - "${FORWARD_SOKETI_PORT:-6010}:6001"
+      - "6011:6002"
     volumes:
       - ./storage:/var/www/html/storage
       - ./docker/coolify-realtime/terminal-server.js:/terminal/terminal-server.js
@@ -81,26 +97,31 @@ services:
       SOKETI_DEFAULT_APP_SECRET: "${PUSHER_APP_SECRET:-coolify}"
       SOKETI_HOST: "${SOKETI_HOST:-0.0.0.0}"
     healthcheck:
-      test: [ "CMD-SHELL", "curl -fsS http://127.0.0.1:6001/ready && curl -fsS http://127.0.0.1:6002/ready || exit 1" ]
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:6001/ready && curl -fsS http://127.0.0.1:6002/ready || exit 1"]
       interval: 5s
       retries: 10
       timeout: 2s
     entrypoint: ["/bin/sh", "/soketi-entrypoint.sh"]
+    networks:
+      - coolify
+
   vite:
     image: node:24-alpine
     pull_policy: always
     container_name: coolify-vite
     working_dir: /var/www/html
     environment:
-      VITE_HOST: "${VITE_HOST:-localhost}"
-      VITE_PORT: "${VITE_PORT:-5173}"
+      VITE_HOST: "0.0.0.0"
+      VITE_PUBLIC_HOST: "${SERVER_IP}"
+      VITE_PORT: "${VITE_PORT:-5174}"
     ports:
-      - "${VITE_PORT:-5173}:${VITE_PORT:-5173}"
+      - "${DEV_VITE_PORT:-5174}:${VITE_PORT:-5174}"
     volumes:
       - .:/var/www/html/:cached
     command: sh -c "npm install && npm run dev"
     networks:
       - coolify
+
   testing-host:
     image: coolify-testing-host:dev
     pull_policy: never
@@ -118,23 +139,25 @@ services:
       - dev_minio_data:/data/coolify/_volumes/minio
     networks:
       - coolify
+
   mailpit:
     image: axllent/mailpit:latest
     pull_policy: always
     container_name: coolify-mail
     ports:
-      - "${FORWARD_MAILPIT_PORT:-1025}:1025"
-      - "${FORWARD_MAILPIT_DASHBOARD_PORT:-8025}:8025"
+      - "${FORWARD_MAILPIT_PORT:-1026}:1025"
+      - "${FORWARD_MAILPIT_DASHBOARD_PORT:-8026}:8025"
     networks:
       - coolify
+
   minio:
-    image: ghcr.io/coollabsio/minio:RELEASE.2025-10-15T17-29-55Z # Released on 15 October 2025
+    image: ghcr.io/coollabsio/minio:RELEASE.2025-10-15T17-29-55Z
     pull_policy: always
     container_name: coolify-minio
     command: server /data --console-address ":9001"
     ports:
-      - "${FORWARD_MINIO_PORT:-9000}:9000"
-      - "${FORWARD_MINIO_PORT_CONSOLE:-9001}:9001"
+      - "${FORWARD_MINIO_PORT:-9010}:9000"
+      - "${FORWARD_MINIO_PORT_CONSOLE:-9011}:9001"
     environment:
       MINIO_ACCESS_KEY: "${MINIO_ACCESS_KEY:-minioadmin}"
       MINIO_SECRET_KEY: "${MINIO_SECRET_KEY:-minioadmin}"
@@ -142,6 +165,7 @@ services:
       - dev_minio_data:/data
     networks:
       - coolify
+
   minio-init:
     image: minio/mc:latest
     pull_policy: always
@@ -172,5 +196,6 @@ volumes:
 
 networks:
   coolify:
-    name: coolify
+    name: coolify_dev
+    driver: bridge
     external: false
