@@ -41,6 +41,17 @@ class InstanceSettings extends Model
         'ai_monitor_interval' => 'integer',
         'ai_auto_heal_enabled' => 'boolean',
         'ai_monitor_log_lines' => 'integer',
+        // AI Build Pack
+        'ai_buildpack_enabled' => 'boolean',
+        'ai_buildpack_auto_detect_docker' => 'boolean',
+        'ai_buildpack_fallback_nixpacks' => 'boolean',
+        // AI Auto-Fix
+        'ai_autofix_enabled' => 'boolean',
+        'ai_autofix_max_retries' => 'integer',
+        'ai_autofix_retry_delay' => 'integer',
+        // IP Whitelist
+        'ip_whitelist_enabled' => 'boolean',
+        'ip_whitelist_sources' => 'string',
     ];
 
     protected static function booted(): void

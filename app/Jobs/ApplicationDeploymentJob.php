@@ -992,28 +992,26 @@ class ApplicationDeploymentJob implements ShouldBeEncrypted, ShouldQueue
             $this->application_deployment_queue->addLogEntry("AI: Using existing Docker configuration from repository.");
 
             if ($aiResult['has_compose']) {
-                // Existing docker-compose found - write it to workdir then use compose flow
+                // Existing docker-compose found
                 $composeContent = $aiResult['existing_compose'] ?? '';
                 if (!empty($composeContent)) {
                     $composePath = "{$this->workdir}/docker-compose.yml";
-                    $this->execute_remote_command([
-                        "echo '" . addslashes($composeContent) . "' > {$composePath}"
-                    ]);
-                    $this->application_deployment_queue->addLogEntry("AI: Written existing docker-compose to {$composePath}");
+                    // Write docker-compose to builder container workdir
+                    $this->executeInBuilderContainer("cat > {$composePath} << 'COMPOSEEOF'\n{$composeContent}\nCOMPOSEEOF");
+                    $this->application_deployment_queue->addLogEntry("AI: Written docker-compose to {$composePath}");
                 }
-                $this->deploy_docker_compose_buildpack();
+                // Build using docker-compose directly (we already cloned, skip clone step)
+                $this->build_ai_docker_compose();
             } else {
-                // Existing Dockerfile found - write it to workdir then use dockerfile flow
+                // Existing Dockerfile found
                 $dockerfileContent = $aiResult['existing_dockerfile'] ?? '';
                 if (!empty($dockerfileContent)) {
                     $dfPath = "{$this->workdir}/Dockerfile";
-                    // Write Dockerfile content to workdir
-                    $this->execute_remote_command([
-                        "cat > {$dfPath} << 'DFEOF'\n{$dockerfileContent}\nDFEOF"
-                    ]);
-                    $this->application_deployment_queue->addLogEntry("AI: Written existing Dockerfile to {$dfPath} (" . strlen($dockerfileContent) . " bytes)");
+                    $this->executeInBuilderContainer("cat > {$dfPath} << 'DFEOF'\n{$dockerfileContent}\nDFEOF");
+                    $this->application_deployment_queue->addLogEntry("AI: Written Dockerfile to {$dfPath}");
                 }
-                $this->deploy_dockerfile_buildpack();
+                // Build using dockerfile directly (we already cloned, skip clone step)
+                $this->build_ai_dockerfile();
             }
         } else {
             // No existing docker files - generate using nixpacks with AI-detected framework
@@ -1107,6 +1105,82 @@ class ApplicationDeploymentJob implements ShouldBeEncrypted, ShouldQueue
                 'dependencies' => [],
             ];
         }
+    }
+
+    /**
+     * Build using AI-detected docker-compose file
+     * (Already cloned repo and written compose file, so skip clone step)
+     */
+    private function build_ai_docker_compose(): void
+    {
+        $this->generate_image_names();
+        $this->cleanup_git();
+        $this->generate_build_env_variables();
+
+        $this->application->loadComposeFile(isInit: false);
+        if ($this->application->settings->is_raw_compose_deployment_enabled) {
+            $this->application->oldRawParser();
+            $composeFile = $this->application->docker_compose_raw;
+        } else {
+            $composeFile = $this->application->parse(pull_request_id: $this->pull_request_id, preview_id: data_get($this->preview, 'id'), commit: $this->commit);
+        }
+
+        // Add .env to services
+        $services = collect(data_get($composeFile, 'services', []));
+        $services = $services->map(function ($service, $name) {
+            $service['env_file'] = ['.env'];
+            return $service;
+        });
+        $composeFile['services'] = $services->toArray();
+
+        // Write compose file
+        $yaml = YAML::dump($composeFile, 10, 4, ['escape' => false]);
+        $this->docker_compose_base64 = base64_encode($yaml);
+
+        // Save build-time env
+        $this->save_buildtime_environment_variables();
+
+        // Build using docker-compose
+        $buildCommand = "cd {$this->workdir} && docker-compose -f docker-compose.yml build --pull";
+        if ($this->force_rebuild) {
+            $buildCommand .= ' --no-cache';
+        }
+
+        $this->execute_remote_command([
+            [executeInDocker($this->deployment_uuid, $buildCommand), 'hidden' => true],
+        ]);
+
+        // Save runtime env
+        $this->save_runtime_environment_variables();
+
+        // Push and rolling update
+        $this->push_to_docker_registry();
+        $this->rolling_update();
+    }
+
+    /**
+     * Build using AI-detected Dockerfile
+     * (Already cloned repo and written Dockerfile, so skip clone step)
+     */
+    private function build_ai_dockerfile(): void
+    {
+        $this->generate_image_names();
+        $this->cleanup_git();
+        $this->generate_compose_file();
+
+        // Save build-time env
+        $this->save_buildtime_environment_variables();
+        $this->generate_build_env_variables();
+
+        // Build the image
+        $this->build_image();
+
+        // Save runtime env
+        $this->save_runtime_environment_variables();
+
+        // Push and rolling update
+        $this->push_to_docker_registry();
+        $this->rolling_update();
     }
 
     private function write_deployment_configurations()

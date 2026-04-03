@@ -121,7 +121,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::get('/settings/email', SettingsEmail::class)->name('settings.email');
     Route::get('/settings/oauth', SettingsOauth::class)->name('settings.oauth');
     Route::get('/settings/scheduled-jobs', SettingsScheduledJobs::class)->name('settings.scheduled-jobs');
-    Route::get('/settings/ai', \App\Livewire\Settings\Ai::class)->name('settings.ai');
+    Route::get('/settings/ai', \App\Livewire\Settings\AiSmartPanel::class)->name('settings.ai');
     Route::get('/settings/ai-monitor', \App\Livewire\Settings\AiMonitor::class)->name('settings.ai-monitor');
     Route::get('/settings/access-lists', \App\Livewire\Settings\AccessLists::class)->name('settings.access-lists');
     Route::get('/settings/swarm-domains', \App\Livewire\Settings\SwarmDomains::class)->name('settings.swarm-domains');
